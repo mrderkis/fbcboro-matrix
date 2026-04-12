@@ -1,4 +1,11 @@
 import MatrixView from '../components/MatrixView';
+
 export default function ProductionPage() {
-  return <MatrixView initialShowTeams={{ vocalists: false, rhythm: false, tech: true, orchestra: false }} />;
+  const productionDefaults = {
+    vocalists: true,
+    rhythm: true,
+    tech: true,
+    orchestra: false
+  };
+  return <MatrixView initialShowTeams={productionDefaults} hideControls={true} />;
 }
