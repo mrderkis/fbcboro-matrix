@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { fetchMatrixPlans, getIgnoredSettings, toggleIgnoredSetting } from '../actions/pco';
+import { fetchMatrixPlans, getIgnoredSettings, toggleIgnoredSetting, fetchSpecialPlans } from '../actions/pco';
 
-// --- BRAND THEME CONTROL ---
+// --- RESTORED BRAND THEME ---
 const BRAND_THEME = {
   colors: {
     midnight: '#10313A',
@@ -13,8 +13,8 @@ const BRAND_THEME = {
     pine: '#04473F',
     jade: '#09A889',
     arctic: '#35E1E5',
-    honey: '#E5B429',
-    apple: '#840639', 
+    honey: '#E5B429', // Yellow for SONG 1, etc.
+    apple: '#840639', // Maroon for OPEN alerts
     black: '#090C0F',
     grayMid: '#CECBC6',
     grayLight: '#EAE8E5',
@@ -43,58 +43,38 @@ interface TeamMember { id: string; name: string; position: string; status: 'C' |
 interface TeamCategory { id: string; name: string; members: TeamMember[]; isEmpty: boolean; }
 interface PlanItem { id: string; title: string; type: string; }
 interface DashboardPlan { 
-  id: string; 
-  date: string; 
-  startTime: string | null; 
-  title: string; 
-  series: string; 
-  isComplete: boolean; 
-  items: PlanItem[]; 
-  declined: TeamMember[]; 
-  blockouts?: string[]; 
+  id: string; date: string; startTime: string | null; title: string; series: string; isComplete: boolean; 
+  items: PlanItem[]; declined: TeamMember[]; blockouts?: string[]; 
   teams: { vocalists: TeamCategory; rhythm: TeamCategory; tech: TeamCategory; orchestra: TeamCategory; }; 
 }
 interface GroupedDecline { name: string; positions: string[]; }
-interface MatrixViewProps { 
-  initialShowTeams?: { vocalists: boolean; rhythm: boolean; tech: boolean; orchestra: boolean; };
-  hideControls?: boolean;
-}
 
 function ServiceCountdown({ targetTime }: { targetTime: string | null }) {
   const [timeLeft, setTimeLeft] = useState<string>('--:--:--');
-  const [isLive, setIsLive] = useState(false);
-
   useEffect(() => {
     if (!targetTime) return;
     const interval = setInterval(() => {
       const now = new Date().getTime();
       const target = new Date(targetTime).getTime();
       const diff = target - now;
-      if (diff <= 0) { setTimeLeft('SERVICE LIVE'); setIsLive(true); return; }
-      const h = Math.floor(diff / (1000 * 60 * 60));
+      if (diff <= 0) { setTimeLeft('LIVE'); return; }
       const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
       const s = Math.floor((diff % (1000 * 60)) / 1000);
-      setTimeLeft(`${h > 0 ? h + ':' : ''}${m < 10 && h > 0 ? '0' + m : m}:${s < 10 ? '0' + s : s}`);
+      setTimeLeft(`${m}:${s < 10 ? '0' + s : s}`);
     }, 1000);
     return () => clearInterval(interval);
   }, [targetTime]);
-
-  return (
-    <div className={`font-mono font-bold tabular-nums ${BRAND_THEME.typography.countdown}`} style={{ color: isLive ? BRAND_THEME.colors.arctic : '#10313A', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', letterSpacing: '0.1em', display: 'inline-block', minWidth: '5ch', textAlign: 'center' }}>
-      {timeLeft}
-    </div>
-  )
+  return <div className={`font-mono font-bold tabular-nums ${BRAND_THEME.typography.countdown}`} style={{ color: '#35E1E5', letterSpacing: '0.1em' }}>{timeLeft}</div>;
 }
 
-export default function MatrixView({ initialShowTeams, hideControls = false }: MatrixViewProps) {
+export default function MatrixView({ initialShowTeams, hideControls = false }: any) {
   const [serviceCount, setServiceCount] = useState<number>(4);
   const [plans, setPlans] = useState<DashboardPlan[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [specialPlans, setSpecialPlans] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [ignoredPositions, setIgnoredPositions] = useState<Record<string, boolean>>({});
   const [showTeams, setShowTeams] = useState(initialShowTeams || { vocalists: true, rhythm: true, tech: true, orchestra: false });
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
-  const [pixelShift, setPixelShift] = useState({ x: 0, y: 0 });
-  const [isNightMode, setIsNightMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(!hideControls);
 
   const TEAM_COLUMNS: Record<string, { left: string[], right: string[] }> = {
@@ -104,96 +84,70 @@ export default function MatrixView({ initialShowTeams, hideControls = false }: M
   };
 
   const formatName = (n: string) => { const p = n.trim().split(' '); return p.length > 1 ? `${p[0]} ${p[p.length - 1][0]}.` : n; };
-  
-  const shortenTitle = (t: string) => {
-    return t
-      .replace(/Announcement Video/gi, 'Video')
-      .replace(/Announce Vid/gi, 'Video')
-      .replace(/Pastor Led Prayer Time/gi, 'Prayer')
-      .replace(/Pastor Greeting and Welcome/gi, 'Greeting')
-      .replace(/Greeting and Welcome/gi, 'Greeting')
-      .replace(/Baptismal Service/gi, 'Baptism')
-      .replace(/Sermon Bumper/gi, 'Bumper')
-      .replace(/Message/gi, 'Sermon');
-  };
-
+  const shortenTitle = (t: string) => t.replace(/Announcement Video/gi, 'Video').replace(/Pastor Led Prayer/gi, 'Prayer').replace(/Sermon Bumper/gi, 'Bumper').replace(/Message/gi, 'Sermon');
   const isPlaceholderSong = (t: string) => ['SONG 1', 'SONG 2', 'SONG 3', 'SONG 4', 'SONG 5'].includes(t.toUpperCase().trim());
-
-  const handleToggleIgnore = async (pId: string, pos: string) => {
-    const key = `${pId}-${pos}`;
-    setIgnoredPositions(prev => ({ ...prev, [key]: !prev[key] }));
-    await toggleIgnoredSetting(pId, pos);
-  };
 
   useEffect(() => {
     const syncData = async () => {
       try {
-        const [d, s] = await Promise.all([fetchMatrixPlans(serviceCount) as unknown as DashboardPlan[], getIgnoredSettings()]);
-        setPlans(d); setIgnoredPositions(s);
+        const [sundayData, settings, specials] = await Promise.all([
+          fetchMatrixPlans(serviceCount), 
+          getIgnoredSettings(),
+          fetchSpecialPlans()
+        ]);
+        setPlans(sundayData as any);
+        setIgnoredPositions(settings);
+        setSpecialPlans(specials);
       } catch (e) { console.error(e); } finally { setIsLoading(false); }
     };
-    const runProtection = () => {
-      setPixelShift({ x: Math.floor(Math.random() * 3) - 1, y: Math.floor(Math.random() * 3) - 1 });
-      const hour = new Date().getHours();
-      setIsNightMode(hour >= 22 || hour < 6);
-    };
-    const savedTheme = localStorage.getItem('fbcBORO-theme') as 'light' | 'dark';
-    if (savedTheme) setTheme(savedTheme);
-    syncData(); runProtection();
-    const dInt = setInterval(syncData, 60000);
-    const pInt = setInterval(runProtection, 60000);
-    return () => { clearInterval(dInt); clearInterval(pInt); };
+    syncData();
+    const interval = setInterval(syncData, 60000);
+    return () => clearInterval(interval);
   }, [serviceCount]);
 
   const renderMember = (pId: string, team: TeamCategory, pos: string) => {
-    const person = team.members.find((m: TeamMember) => {
+    const person = team?.members?.find((m: any) => {
       const cleanM = (m.position || '').toUpperCase().replace(/\s/g, '');
       const cleanP = pos.toUpperCase().replace(/\s/g, '');
-      
-      const rfMatch = (m.position || '').match(/(RF\d+)/i);
-      if (rfMatch && rfMatch[0].toUpperCase() === pos) return true;
-      
+      if ((m.position || '').match(/(RF\d+)/i)?.[0].toUpperCase() === pos) return true;
       if (cleanP === 'AG' && (cleanM.includes('ACOUSTIC') || cleanM === 'AG')) return true;
       if (cleanP === 'DRM' && (cleanM.includes('DRUM') || cleanM.includes('PERC'))) return true;
       if (cleanP === 'BASS' && cleanM.includes('BASS')) return true;
       if (cleanP === 'PNO' && cleanM.includes('PIANO')) return true;
       if (cleanP.startsWith('CAM') && cleanM.startsWith('CAMERA')) return cleanM.replace('CAMERA', 'CAM') === cleanP;
-      
       return cleanM === cleanP;
     });
 
     const isIgnored = !!ignoredPositions[`${pId}-${pos}`];
-    const isEmpty = !person;
-    const shouldAlert = isEmpty && !isIgnored && !isNightMode;
+    const shouldAlert = !person && !isIgnored;
 
     return (
-      <div key={pos} className={`px-2 py-1 rounded flex flex-row items-center gap-2 relative border transition-all ${BRAND_THEME.layout.rosterSlotHeight} 
-        ${shouldAlert ? 'bg-[#840639] animate-song-pulse border-black shadow-md' : 'border-transparent'}
-        ${isIgnored && isEmpty ? (theme === 'dark' ? 'bg-[#10313A] opacity-40' : 'bg-[#EAE8E5] opacity-60') : (!shouldAlert ? 'bg-black/10' : '')}`}>
-        <div className={`w-12 shrink-0 flex items-center border-r h-full ${shouldAlert ? 'border-white/20' : 'border-white/10'}`}>
-          <span className={`${BRAND_THEME.typography.posLabel} font-larken font-black uppercase tracking-tighter leading-none ${shouldAlert ? 'text-white' : 'text-slate-400'}`}>{pos}</span>
-        </div>
-        <div className="flex items-center gap-2 flex-1 min-w-0">
+      <div key={pos} className={`px-2 py-1 rounded flex items-center gap-2 border transition-all ${BRAND_THEME.layout.rosterSlotHeight} ${shouldAlert ? 'bg-[#840639] animate-song-pulse border-black shadow-md' : 'border-transparent bg-black/10'}`}>
+        <span className={`${BRAND_THEME.typography.posLabel} font-black w-10 text-slate-400 border-r border-white/10 mr-1 uppercase`}>{pos}</span>
+        <div className="flex-1 min-w-0 flex items-center gap-2">
           {person ? (
-            <><span className={`w-3 h-3 rounded-full shrink-0 ${person.status === 'C' ? 'bg-green-500' : 'bg-yellow-400'}`} /><span className={`${BRAND_THEME.typography.name} font-black leading-none truncate ${theme === 'dark' ? 'text-white' : 'text-[#090C0F]'}`}>{formatName(person.name)}</span></>
+            <><span className={`w-3 h-3 rounded-full ${person.status === 'C' ? 'bg-green-500' : 'bg-yellow-400'}`} /><span className={`${BRAND_THEME.typography.name} font-black truncate text-white leading-none`}>{formatName(person.name)}</span></>
           ) : (
             <span className={`${shouldAlert ? 'text-white' : 'text-slate-700'} font-black italic text-[11px] tracking-widest ${shouldAlert ? 'opacity-100' : 'opacity-30'}`}>OPEN</span>
           )}
         </div>
-        {isEmpty && <input type="checkbox" checked={isIgnored} onChange={() => handleToggleIgnore(pId, pos)} className="absolute top-1 right-1 w-3 h-3 opacity-10 hover:opacity-100 cursor-pointer accent-black" />}
+        {!person && <input type="checkbox" checked={isIgnored} onChange={async () => {
+          setIgnoredPositions(prev => ({...prev, [`${pId}-${pos}`]: !isIgnored}));
+          await toggleIgnoredSetting(pId, pos);
+        }} className="opacity-0 hover:opacity-100 w-3 h-3 cursor-pointer" />}
       </div>
     );
   };
 
   const renderTeamSection = (pId: string, team: TeamCategory, title: string, tType: string) => {
     const cols = TEAM_COLUMNS[tType];
-    if (!cols) return null;
+    if (!cols || !team) return null;
     return (
-      <div className="flex flex-col mb-2">
-        <h4 className={`${BRAND_THEME.typography.subtitle} font-larken font-black uppercase tracking-widest mb-1 border-b ${theme === 'dark' ? 'text-[#CECBC6] border-[#CECBC6]/30' : 'text-[#CECBC6] border-[#CECBC6]/20'}`}>{title}</h4>
-        <div className="grid grid-cols-2 gap-x-3">
-          <div className={`flex flex-col ${BRAND_THEME.layout.rosterGap}`}>{cols.left.map(pos => renderMember(pId, team, pos))}</div>
-          <div className={`flex flex-col ${BRAND_THEME.layout.rosterGap}`}>{cols.right.map(pos => renderMember(pId, team, pos))}</div>
+      <div className="mb-2">
+        <h4 className={`${BRAND_THEME.typography.subtitle} font-larken font-black uppercase text-[#CECBC6] border-b border-white/10 mb-1`}>{title}</h4>
+        <div className="grid grid-cols-2 gap-1">
+          <div className="flex flex-col gap-1">{cols.left.map(pos => renderMember(pId, team, pos))}</div>
+          <div className="flex flex-col gap-1">{cols.right.map(pos => renderMember(pId, team, pos))}</div>
         </div>
       </div>
     );
@@ -202,15 +156,10 @@ export default function MatrixView({ initialShowTeams, hideControls = false }: M
   const renderGroupedSetlist = (items: PlanItem[]) => {
     const rows: React.ReactNode[] = [];
     let currentGroup: string[] = [];
-
     const flushGroup = () => {
       if (currentGroup.length === 0) return;
       const combined = currentGroup.join(' | ');
-      rows.push(
-        <div key={combined} className={`text-[14px] ${BRAND_THEME.layout.setlistSlotHeight} font-bold leading-tight px-1.5 py-0.5 rounded italic opacity-60 flex items-center ${theme === 'dark' ? 'text-[#CECBC6]' : 'text-gray-600'}`}>
-          {combined}
-        </div>
-      );
+      rows.push(<div key={combined} className={`text-[14px] ${BRAND_THEME.layout.setlistSlotHeight} font-bold leading-tight px-1.5 py-0.5 rounded italic opacity-60 flex items-center text-[#CECBC6]`}>{combined}</div>);
       currentGroup = [];
     };
 
@@ -218,129 +167,118 @@ export default function MatrixView({ initialShowTeams, hideControls = false }: M
       const title = shortenTitle(item.title);
       const isPl = isPlaceholderSong(item.title);
       const isSong = item.type === 'song' || isPl;
-
       if (isSong) {
         flushGroup();
         rows.push(
           <div key={item.id} className={`${BRAND_THEME.typography.setlist} ${BRAND_THEME.layout.setlistSlotHeight} font-bold leading-tight truncate px-1.5 py-0.5 rounded flex items-center border shadow-sm
             ${isPl ? 'bg-[#E5B429] text-[#090C0F] animate-song-pulse border-yellow-600' : 'bg-[#57AAC1] text-white border-blue-800 animate-song-pulse'}`}>
-            {title}
+            {title.toUpperCase()}
           </div>
         );
       } else {
         currentGroup.push(title);
-        const next = items[idx + 1];
-        const nextIsSong = next && (next.type === 'song' || isPlaceholderSong(next.title));
-        if (nextIsSong || idx === items.length - 1) flushGroup();
+        if (idx === items.length - 1 || items[idx+1].type === 'song' || isPlaceholderSong(items[idx+1].title)) flushGroup();
       }
     });
-
     return rows;
   };
 
-  return (
-    <div className={`w-full h-screen flex flex-col p-2 font-poppins overflow-hidden transition-all duration-[10000ms] ${isNightMode ? 'bg-[#090C0F] opacity-30 grayscale' : (theme === 'dark' ? 'bg-[#090C0F]' : 'bg-[#FCF9F5]')}`} style={{ transform: `translate(${pixelShift.x}px, ${pixelShift.y}px)` }}>
-      <style>{`
-        .font-larken { font-family: var(--font-larken), serif; } 
-        .font-poppins { font-family: var(--font-poppins), sans-serif; } 
-        
-        @keyframes song-pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-        .animate-song-pulse { animation: song-pulse 10s ease-in-out infinite; }
-        
-        /* Nuke the Next.js Dev/Feedback Overlay */
-        #nextjs-portal, 
-        [data-nextjs-toast], 
-        [data-vercel-feedback-button],
-        nextjs-portal { 
-          display: none !important; 
-          visibility: hidden !important; 
-          pointer-events: none !important;
-          opacity: 0 !important;
-          width: 0 !important;
-          height: 0 !important;
-        }
-      `}</style>
-      
-      <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="fixed top-4 right-4 z-[100] p-2 rounded-full bg-black/20 hover:bg-black/40 text-white/50 hover:text-white transition-all border border-white/10">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-      </button>
+  const renderSpecialBox = (title: string, data: any) => (
+    <div className="flex-1 flex flex-col p-2 rounded border-2 mb-2 last:mb-0 bg-[#10313A]/60 border-[#225262]/40">
+      <div className="flex justify-between items-baseline mb-2 border-b border-white/10 pb-1">
+        <h4 className="text-[15px] font-black uppercase text-slate-200 tracking-widest">{title}</h4>
+        <span className="text-[18px] font-black text-[#35E1E5]">{data?.date || '--/--'}</span>
+      </div>
+      <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-1">
+        {!data?.exists ? (
+          <div className="bg-[#E5B429] text-black p-2 rounded font-black text-[10px] uppercase text-center mt-4">NO PLAN CREATED</div>
+        ) : data.songs.length === 0 ? (
+          <div className="bg-[#E5B429] text-black p-2 rounded font-black text-[12px] uppercase text-center mt-4">BLANK</div>
+        ) : (
+          data.songs.map((s: string, i: number) => (
+            <div key={i} className="text-[12px] font-bold px-2 py-1 rounded border border-blue-900/30 bg-[#225262]/50 text-white truncate animate-song-pulse">{s.toUpperCase()}</div>
+          ))
+        )}
+      </div>
+    </div>
+  );
 
-      <div className={`transition-all duration-500 overflow-hidden ${isSettingsOpen ? 'max-h-24 opacity-100 mb-2' : 'max-h-0 opacity-0 mb-0'}`}>
-        <div className={`flex items-center justify-between p-2 rounded shadow-sm border shrink-0 ${theme === 'dark' ? 'bg-[#10313A] border-[#225262] text-[#CECBC6]' : 'bg-white border-gray-200 text-gray-500'} ${isNightMode ? 'opacity-50' : ''}`}>
+  return (
+    <div className="w-full h-screen bg-[#090C0F] p-2 flex flex-col overflow-hidden text-white font-poppins">
+      <style>{`
+        @keyframes song-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .animate-song-pulse { animation: song-pulse 10s ease-in-out infinite; }
+        ::-webkit-scrollbar { display: none !important; }
+        html, body { overflow: hidden; -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
+
+      {isSettingsOpen && (
+        <div className="flex items-center justify-between p-2 mb-2 bg-[#10313A] rounded border border-[#225262]">
           <div className="flex items-center gap-4">
-            <div className="relative h-10 w-10"><Image src={theme === 'dark' ? "/DARK_MODE_LOGO.png" : "/LIGHT_MODE_LOGO.png"} alt="FBCBORO" fill sizes="40px" className="object-contain" priority /></div>
-            <h2 className={`text-xl font-larken font-black uppercase tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-[#090C0F]'}`}>BORO Matrix</h2>
-            <button onClick={() => { const n = theme === 'light' ? 'dark' : 'light'; setTheme(n); localStorage.setItem('fbcBORO-theme', n); }} className={`font-poppins px-3 py-1.5 rounded text-[10px] font-black uppercase border transition-all ${theme === 'dark' ? 'border-[#225262] hover:bg-white/10 text-white' : 'border-gray-200 hover:bg-gray-100 text-gray-600'}`}> {theme === 'dark' ? '🌙 Dark Mode' : '☀️ Light Mode'} </button>
+            <div className="h-10 w-10 relative"><Image src="/DARK_MODE_LOGO.png" alt="FBC" fill className="object-contain" /></div>
+            <h2 className="text-xl font-black uppercase font-larken">Matrix</h2>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 text-[10px] font-black tracking-widest uppercase">{(['vocalists', 'rhythm', 'tech', 'orchestra'] as const).map(t => (<label key={t} className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={showTeams[t]} onChange={() => setShowTeams(p => ({ ...p, [t]: !p[t] }))} className="w-3 h-3 accent-black" />{t}</label>))}</div>
-            <select value={serviceCount} onChange={(e) => setServiceCount(Number(e.target.value))} className={`font-poppins text-xs border rounded p-1 font-bold ${theme === 'dark' ? 'bg-[#090C0F] border-[#225262] text-white' : 'bg-white border-gray-300'}`}> {[1, 2, 3, 4, 5, 6].map(num => <option key={num} value={num}>{num} SERVICES</option>)} </select>
+          <div className="flex items-center gap-4 text-[10px] font-black uppercase">
+            {Object.keys(showTeams).map(t => (
+              <label key={t} className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={(showTeams as any)[t]} onChange={() => setShowTeams((p:any) => ({...p, [t]: !(showTeams as any)[t]}))} className="accent-white" /> {t}</label>
+            ))}
+            <select value={serviceCount} onChange={(e) => setServiceCount(Number(e.target.value))} className="bg-black border border-white/20 p-1 rounded">
+              {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n} SERVICES</option>)}
+            </select>
           </div>
         </div>
-      </div>
+      )}
 
-      {isLoading ? <div className="flex flex-1 items-center justify-center text-gray-500 animate-pulse font-black text-2xl font-larken uppercase">Syncing Planning Center...</div> : (
-        <div className={`flex-1 grid gap-2 overflow-hidden ${!isSettingsOpen ? 'pt-2' : ''}`} style={{ gridTemplateColumns: `repeat(${serviceCount}, minmax(0, 1fr))` }}>
-          {plans.map((p: DashboardPlan) => (
-            <div key={p.id} className={`rounded border-2 flex flex-col h-full overflow-hidden shadow-sm transition-colors duration-500 ${theme === 'dark' ? 'bg-[#10313A]/60 border-[#225262]/40' : 'bg-white border-gray-200'}`}>
-              <div className={`p-1.5 border-b-2 shrink-0 flex items-center justify-between px-3 ${p.isComplete ? 'bg-[#10313A] text-white' : 'bg-[#35E1E5] text-[#090C0F]'}`}>
-                <h3 className={`${BRAND_THEME.typography.header} font-larken font-black uppercase tracking-tighter leading-none`}>{p.date}</h3>
+      {isLoading ? <div className="flex-1 flex items-center justify-center font-black animate-pulse uppercase">Syncing Planning Center...</div> : (
+        <div className="flex-1 grid gap-2 overflow-hidden" style={{ gridTemplateColumns: `repeat(${serviceCount}, 1fr) 0.5fr` }}>
+          {plans.map((p) => (
+            <div key={p.id} className="rounded border-2 border-[#225262]/40 bg-[#10313A]/30 flex flex-col h-full overflow-hidden shadow-lg">
+              <div className={`p-2 border-b-2 flex justify-between items-center ${p.isComplete ? 'bg-[#10313A]' : 'bg-[#35E1E5] text-black'}`}>
+                <h3 className="font-black font-larken text-xl uppercase tracking-tighter">{p.date}</h3>
                 <ServiceCountdown targetTime={p.startTime} />
               </div>
-              <div className="p-2 overflow-y-auto flex-1 flex flex-col gap-2">
-                <div className={`p-3 rounded border shadow-inner shrink-0 ${BRAND_THEME.layout.planInfoHeight} flex flex-col ${theme === 'dark' ? 'bg-[#090C0F] border-[#225262]/30' : 'bg-[#FCF9F5] border-gray-200'}`}>
-                  <div className="mb-2"><span className={`${BRAND_THEME.typography.title} font-larken tracking-widest font-black block leading-tight ${theme === 'dark' ? 'text-white' : 'text-[#090C0F]'}`}>{p.title}</span><span className={`${BRAND_THEME.typography.subtitle} font-poppins font-bold uppercase block text-slate-500`}>{p.series}</span></div>
-                  <div className={`flex-1 overflow-y-auto flex flex-col gap-1 border-l-4 pl-2 no-scrollbar ${theme === 'dark' ? 'border-[#CECBC6]/30' : 'border-slate-300'}`}>
+              
+              <div className="p-2 overflow-y-auto flex-1 flex flex-col no-scrollbar">
+                <div className="bg-black/40 p-2 rounded border border-white/5 h-[340px] flex flex-col shrink-0 mb-3">
+                  <span className="font-black text-sm block truncate leading-tight text-white">{p.title}</span>
+                  <span className="text-[10px] font-bold text-slate-500 block mb-2 uppercase tracking-widest">{p.series}</span>
+                  <div className="flex-1 overflow-y-auto no-scrollbar space-y-1 border-l-2 border-white/10 pl-2">
                     {renderGroupedSetlist(p.items)}
                   </div>
                 </div>
-                <div className="flex flex-col">
+
+                <div className="flex flex-col gap-1">
                   {showTeams.vocalists && renderTeamSection(p.id, p.teams.vocalists, 'VOCALISTS', 'vocalists')}
                   {showTeams.rhythm && renderTeamSection(p.id, p.teams.rhythm, 'BAND', 'rhythm')}
                   {showTeams.tech && renderTeamSection(p.id, p.teams.tech, 'TECH', 'tech')}
-                  {showTeams.orchestra && renderTeamSection(p.id, p.teams.orchestra, 'ORCHESTRA', 'orchestra')}
                 </div>
-                
-                <div className="mt-auto space-y-2">
+
+                {/* FOOTER PINNED TO BOTTOM */}
+                <div className="mt-auto space-y-2 pt-4">
                   {p.declined.length > 0 && (
-                    <div className={`pt-2 border-t p-2 rounded transition-colors duration-500 ${theme === 'dark' ? 'bg-[#090C0F] border-[#BC1940]/50' : 'bg-[#EAE8E5] border-gray-300'}`}>
-                      <h4 className={`${BRAND_THEME.typography.declinedHeader} font-larken font-black text-[#BC1940] uppercase tracking-widest mb-1`}>DECLINED</h4>
-                      <div className="flex flex-col gap-1"> {Object.values(p.declined.reduce((acc: Record<string, GroupedDecline>, d: TeamMember) => { const cp = d.position.match(/(RF\d+)/i)?.[0].toUpperCase() || d.position; if (!acc[d.name]) acc[d.name] = { name: d.name, positions: [cp] }; else if (!acc[d.name].positions.includes(cp)) acc[d.name].positions.push(cp); return acc; }, {})).map((g: GroupedDecline) => ( <div key={g.name} className={`${BRAND_THEME.typography.declinedText} flex items-center gap-2 leading-tight`}><span className="text-[#BC1940] line-through font-bold">{formatName(g.name)}</span><span className="text-[10px] text-[#BC1940]/70 font-black">({g.positions.join(',')})</span></div> ))} </div>
+                    <div className="bg-red-900/20 border border-red-500/30 p-2 rounded">
+                      <span className="text-[14px] font-black text-red-500 block mb-1 uppercase tracking-widest">DECLINED</span>
+                      {p.declined.map(d => <div key={d.id} className="text-[14px] line-through text-red-400 font-bold leading-none mb-1">{formatName(d.name)} <span className="text-[10px] opacity-60">({d.position})</span></div>)}
                     </div>
                   )}
-
                   {p.blockouts && p.blockouts.length > 0 && (
-                    <div className={`pt-2 border-t p-2 rounded transition-colors duration-500 ${theme === 'dark' ? 'bg-[#090C0F] border-slate-700' : 'bg-slate-100 border-gray-300'}`}>
-                      <h4 className={`${BRAND_THEME.typography.declinedHeader} font-larken font-black text-slate-500 uppercase tracking-widest mb-1.5`}>BLOCKOUTS</h4>
-                      <div className="flex flex-wrap gap-1.5">
-                        {p.blockouts.map((name) => (
-                          <div 
-                            key={name} 
-                            className={`px-1.5 py-0.5 rounded text-[13px] font-bold tracking-tight leading-none opacity-60 ${
-                              theme === 'dark' ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {formatName(name)}
-                          </div>
-                        ))}
-                      </div>
+                    <div className="bg-slate-800/40 p-2 rounded border border-slate-700">
+                      <span className="text-[14px] font-black text-slate-500 block mb-1 uppercase tracking-widest">BLOCKOUTS</span>
+                      <div className="flex flex-wrap gap-1">{p.blockouts.map(name => <span key={name} className="bg-slate-700 px-1.5 py-0.5 rounded text-[15px] font-bold opacity-60">{formatName(name)}</span>)}</div>
                     </div>
                   )}
                 </div>
               </div>
             </div>
           ))}
+
+          {/* REHEARSAL COLUMN */}
+          <div className="flex flex-col h-full gap-2">
+            {renderSpecialBox("Choir Rehearsal", specialPlans?.[0])}
+            {renderSpecialBox("Student Choir", specialPlans?.[1])}
+          </div>
         </div>
       )}
-
-      {/* NEW: Clean Status Indicator at bottom left clear of the curve */}
-      <div className="fixed bottom-3 left-4 z-[200] flex items-center gap-1.5 opacity-50">
-        <div className={`w-2 h-2 rounded-full bg-green-500 ${!isLoading ? 'animate-pulse' : ''}`} />
-        <span className="text-[10px] font-black uppercase tracking-tighter text-slate-500"></span>
-      </div>
     </div>
   );
 }

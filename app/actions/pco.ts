@@ -328,3 +328,40 @@ export async function fetchMatrixPlans(count: number): Promise<DashboardPlan[]> 
   
   return dashboardPlans;
 }
+
+export async function fetchSpecialPlans() {
+  const specialIds = [415926, 1464487]; // Choir and Student Choir
+  
+  const results = await Promise.all(specialIds.map(async (id) => {
+    try {
+      // Fetch future plans for this specific service type
+      const response = await fetch(
+        `https://api.planningcenteronline.com/services/v2/service_types/${id}/plans?filter=future&per_page=1&include=items`,
+        {
+          headers: {
+            'Authorization': `Basic ${Buffer.from(`${process.env.PCO_APP_ID}:${process.env.PCO_SECRET}`).toString('base64')}`
+          },
+          next: { revalidate: 300 } // Cache for 5 mins
+        }
+      );
+      const data = await response.json();
+      
+      if (!data.data || data.data.length === 0) return { id, error: 'no plan created' };
+
+      const plan = data.data[0];
+      const items = data.included || [];
+      const songs = items.filter((i: any) => i.attributes.item_type === 'song');
+
+      return {
+        id,
+        date: new Date(plan.attributes.sort_date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }),
+        songs: songs.map((s: any) => s.attributes.title),
+        exists: true
+      };
+    } catch (e) {
+      return { id, error: 'connection error' };
+    }
+  }));
+
+  return results;
+}
