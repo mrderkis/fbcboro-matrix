@@ -9,8 +9,8 @@ export default function BroadcastPage() {
         hideControls={true}
         isBroadcast={true} 
         initialShowTeams={{ 
-          vocalists: false, 
-          rhythm: false, 
+          vocalists: true, 
+          rhythm: true, 
           tech: true, 
           safety: true, 
           orchestra: false 
