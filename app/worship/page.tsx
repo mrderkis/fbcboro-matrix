@@ -7,5 +7,10 @@ export default function WorshipPage() {
     tech: false,
     orchestra: false
   };
-  return <MatrixView initialShowTeams={worshipDefaults} hideControls={true} />;
+
+  return (
+    <main className="bg-gray-100">
+      <MatrixView initialShowTeams={worshipDefaults} hideControls={true} />
+    </main>
+  );
 }

@@ -14,17 +14,17 @@ const BRAND_THEME = {
     jade: '#09A889',
     arctic: '#35E1E5',
     honey: '#E5B429',
-    apple: '#BC1940',
+    apple: '#840639', 
     black: '#090C0F',
     grayMid: '#CECBC6',
     grayLight: '#EAE8E5',
     grayLighter: '#FCF9F5'
   },
   typography: {
-    header: 'text-2xl',
-    countdown: 'text-2xl',
-    title: 'text-xl',
-    subtitle: 'text-sm',
+    header: 'text-xl',
+    countdown: 'text-xl',
+    title: 'text-md',
+    subtitle: 'text-xs',
     setlist: 'text-[17px]',
     posLabel: 'text-[13px]',
     name: 'text-[22px]',
@@ -32,17 +32,28 @@ const BRAND_THEME = {
     declinedText: 'text-base',
   },
   layout: {
-    planInfoHeight: 'h-[350px]', // <--- CHANGE THIS TO ADJUST SETLIST SPACE
-    rosterSlotHeight: 'h-[45px]', 
+    planInfoHeight: 'h-[350px]', 
+    rosterSlotHeight: 'h-[30px]', 
     rosterGap: 'gap-1',
-    setlistSlotHeight: 'min-h-[24px]'
+    setlistSlotHeight: 'min-h-[28px]'
   }
 };
 
 interface TeamMember { id: string; name: string; position: string; status: 'C' | 'U' | 'D'; }
 interface TeamCategory { id: string; name: string; members: TeamMember[]; isEmpty: boolean; }
 interface PlanItem { id: string; title: string; type: string; }
-interface DashboardPlan { id: string; date: string; startTime: string | null; title: string; series: string; isComplete: boolean; items: PlanItem[]; declined: TeamMember[]; teams: { vocalists: TeamCategory; rhythm: TeamCategory; tech: TeamCategory; orchestra: TeamCategory; }; }
+interface DashboardPlan { 
+  id: string; 
+  date: string; 
+  startTime: string | null; 
+  title: string; 
+  series: string; 
+  isComplete: boolean; 
+  items: PlanItem[]; 
+  declined: TeamMember[]; 
+  blockouts?: string[]; 
+  teams: { vocalists: TeamCategory; rhythm: TeamCategory; tech: TeamCategory; orchestra: TeamCategory; }; 
+}
 interface GroupedDecline { name: string; positions: string[]; }
 interface MatrixViewProps { 
   initialShowTeams?: { vocalists: boolean; rhythm: boolean; tech: boolean; orchestra: boolean; };
@@ -86,14 +97,10 @@ export default function MatrixView({ initialShowTeams, hideControls = false }: M
   const [isNightMode, setIsNightMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(!hideControls);
 
-  // --- SHORTENED ROSTER LABELS ---
   const TEAM_COLUMNS: Record<string, { left: string[], right: string[] }> = {
     vocalists: { left: ['RF1', 'RF2', 'RF3', 'RF4', 'RF5', 'RF6'], right: ['RF7', 'RF8', 'RF9', 'RF10', 'RF11'] },
-    rhythm: { 
-      left: ['DRM', 'Bass', 'EG1', 'EG2'], // 'DRM' Shortened
-      right: ['AG', 'Keys', 'PNO']        // 'PNO' Shortened
-    },
-    tech: { left: ['Director', 'PTZ OP', 'CAM 3', 'CAM 4'], right: ['CG1', 'CG2', 'FOH', 'AFV'] }
+    rhythm: { left: ['DRM', 'Bass', 'EG1', 'EG2'], right: ['AG', 'Keys', 'PNO'] },
+    tech: { left: ['DIR', 'PTZ OP', 'CAM 3', 'CAM 4'], right: ['CG1', 'CG2', 'FOH', 'AFV'] }
   };
 
   const formatName = (n: string) => { const p = n.trim().split(' '); return p.length > 1 ? `${p[0]} ${p[p.length - 1][0]}.` : n; };
@@ -140,17 +147,18 @@ export default function MatrixView({ initialShowTeams, hideControls = false }: M
 
   const renderMember = (pId: string, team: TeamCategory, pos: string) => {
     const person = team.members.find((m: TeamMember) => {
-      const cleanM = m.position.toUpperCase().replace(/\s/g, '');
+      const cleanM = (m.position || '').toUpperCase().replace(/\s/g, '');
       const cleanP = pos.toUpperCase().replace(/\s/g, '');
       
-      if (m.position.match(/(RF\d+)/i)?.[0].toUpperCase() === pos) return true;
+      const rfMatch = (m.position || '').match(/(RF\d+)/i);
+      if (rfMatch && rfMatch[0].toUpperCase() === pos) return true;
+      
       if (cleanP === 'AG' && (cleanM.includes('ACOUSTIC') || cleanM === 'AG')) return true;
-      // Updated DRM matching
       if (cleanP === 'DRM' && (cleanM.includes('DRUM') || cleanM.includes('PERC'))) return true;
       if (cleanP === 'BASS' && cleanM.includes('BASS')) return true;
-      // Updated PNO matching
       if (cleanP === 'PNO' && cleanM.includes('PIANO')) return true;
       if (cleanP.startsWith('CAM') && cleanM.startsWith('CAMERA')) return cleanM.replace('CAMERA', 'CAM') === cleanP;
+      
       return cleanM === cleanP;
     });
 
@@ -160,16 +168,16 @@ export default function MatrixView({ initialShowTeams, hideControls = false }: M
 
     return (
       <div key={pos} className={`px-2 py-1 rounded flex flex-row items-center gap-2 relative border transition-all ${BRAND_THEME.layout.rosterSlotHeight} 
-        ${shouldAlert ? 'animate-breathing-alert border-black shadow-md' : 'border-transparent'}
-        ${isIgnored && isEmpty ? (theme === 'dark' ? 'bg-[#10313A] opacity-40' : 'bg-[#EAE8E5] opacity-60') : 'bg-black/10'}`}>
-        <div className="w-12 shrink-0 flex items-center border-r border-white/10 h-full">
-          <span className={`${BRAND_THEME.typography.posLabel} font-larken font-black uppercase tracking-tighter leading-none ${shouldAlert ? 'text-inherit' : 'text-slate-400'}`}>{pos}</span>
+        ${shouldAlert ? 'bg-[#840639] animate-song-pulse border-black shadow-md' : 'border-transparent'}
+        ${isIgnored && isEmpty ? (theme === 'dark' ? 'bg-[#10313A] opacity-40' : 'bg-[#EAE8E5] opacity-60') : (!shouldAlert ? 'bg-black/10' : '')}`}>
+        <div className={`w-12 shrink-0 flex items-center border-r h-full ${shouldAlert ? 'border-white/20' : 'border-white/10'}`}>
+          <span className={`${BRAND_THEME.typography.posLabel} font-larken font-black uppercase tracking-tighter leading-none ${shouldAlert ? 'text-white' : 'text-slate-400'}`}>{pos}</span>
         </div>
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {person ? (
             <><span className={`w-3 h-3 rounded-full shrink-0 ${person.status === 'C' ? 'bg-green-500' : 'bg-yellow-400'}`} /><span className={`${BRAND_THEME.typography.name} font-black leading-none truncate ${theme === 'dark' ? 'text-white' : 'text-[#090C0F]'}`}>{formatName(person.name)}</span></>
           ) : (
-            <span className="text-slate-700 font-black italic text-[11px] tracking-widest opacity-30">OPEN</span>
+            <span className={`${shouldAlert ? 'text-white' : 'text-slate-700'} font-black italic text-[11px] tracking-widest ${shouldAlert ? 'opacity-100' : 'opacity-30'}`}>OPEN</span>
           )}
         </div>
         {isEmpty && <input type="checkbox" checked={isIgnored} onChange={() => handleToggleIgnore(pId, pos)} className="absolute top-1 right-1 w-3 h-3 opacity-10 hover:opacity-100 cursor-pointer accent-black" />}
@@ -208,12 +216,14 @@ export default function MatrixView({ initialShowTeams, hideControls = false }: M
 
     items.forEach((item, idx) => {
       const title = shortenTitle(item.title);
-      const isSong = item.type === 'song' || isPlaceholderSong(item.title);
+      const isPl = isPlaceholderSong(item.title);
+      const isSong = item.type === 'song' || isPl;
+
       if (isSong) {
         flushGroup();
         rows.push(
           <div key={item.id} className={`${BRAND_THEME.typography.setlist} ${BRAND_THEME.layout.setlistSlotHeight} font-bold leading-tight truncate px-1.5 py-0.5 rounded flex items-center border shadow-sm
-            ${isPlaceholderSong(item.title) ? 'bg-[#E5B429] text-[#090C0F] animate-pulse border-yellow-600' : 'bg-[#57AAC1] text-white border-blue-800'}`}>
+            ${isPl ? 'bg-[#E5B429] text-[#090C0F] animate-song-pulse border-yellow-600' : 'bg-[#57AAC1] text-white border-blue-800 animate-song-pulse'}`}>
             {title}
           </div>
         );
@@ -230,7 +240,29 @@ export default function MatrixView({ initialShowTeams, hideControls = false }: M
 
   return (
     <div className={`w-full h-screen flex flex-col p-2 font-poppins overflow-hidden transition-all duration-[10000ms] ${isNightMode ? 'bg-[#090C0F] opacity-30 grayscale' : (theme === 'dark' ? 'bg-[#090C0F]' : 'bg-[#FCF9F5]')}`} style={{ transform: `translate(${pixelShift.x}px, ${pixelShift.y}px)` }}>
-      <style>{`.font-larken { font-family: var(--font-larken), serif; } .font-poppins { font-family: var(--font-poppins), sans-serif; } @keyframes breathing-alert { 0%, 100% { background-color: #BC1940; color: #FFFFFF; } 50% { background-color: transparent; color: ${theme === 'dark' ? '#FFFFFF' : '#090C0F'}; } } .animate-breathing-alert { animation: breathing-alert 15s ease-in-out infinite; }`}</style>
+      <style>{`
+        .font-larken { font-family: var(--font-larken), serif; } 
+        .font-poppins { font-family: var(--font-poppins), sans-serif; } 
+        
+        @keyframes song-pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        .animate-song-pulse { animation: song-pulse 10s ease-in-out infinite; }
+        
+        /* Nuke the Next.js Dev/Feedback Overlay */
+        #nextjs-portal, 
+        [data-nextjs-toast], 
+        [data-vercel-feedback-button],
+        nextjs-portal { 
+          display: none !important; 
+          visibility: hidden !important; 
+          pointer-events: none !important;
+          opacity: 0 !important;
+          width: 0 !important;
+          height: 0 !important;
+        }
+      `}</style>
       
       <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="fixed top-4 right-4 z-[100] p-2 rounded-full bg-black/20 hover:bg-black/40 text-white/50 hover:text-white transition-all border border-white/10">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -259,7 +291,6 @@ export default function MatrixView({ initialShowTeams, hideControls = false }: M
                 <ServiceCountdown targetTime={p.startTime} />
               </div>
               <div className="p-2 overflow-y-auto flex-1 flex flex-col gap-2">
-                {/* SETLIST CONTAINER - HEIGHT CONTROLLED BY THEME */}
                 <div className={`p-3 rounded border shadow-inner shrink-0 ${BRAND_THEME.layout.planInfoHeight} flex flex-col ${theme === 'dark' ? 'bg-[#090C0F] border-[#225262]/30' : 'bg-[#FCF9F5] border-gray-200'}`}>
                   <div className="mb-2"><span className={`${BRAND_THEME.typography.title} font-larken tracking-widest font-black block leading-tight ${theme === 'dark' ? 'text-white' : 'text-[#090C0F]'}`}>{p.title}</span><span className={`${BRAND_THEME.typography.subtitle} font-poppins font-bold uppercase block text-slate-500`}>{p.series}</span></div>
                   <div className={`flex-1 overflow-y-auto flex flex-col gap-1 border-l-4 pl-2 no-scrollbar ${theme === 'dark' ? 'border-[#CECBC6]/30' : 'border-slate-300'}`}>
@@ -272,17 +303,44 @@ export default function MatrixView({ initialShowTeams, hideControls = false }: M
                   {showTeams.tech && renderTeamSection(p.id, p.teams.tech, 'TECH', 'tech')}
                   {showTeams.orchestra && renderTeamSection(p.id, p.teams.orchestra, 'ORCHESTRA', 'orchestra')}
                 </div>
-                {p.declined.length > 0 && (
-                  <div className={`mt-auto pt-2 border-t p-2 rounded transition-colors duration-500 ${theme === 'dark' ? 'bg-[#090C0F] border-[#BC1940]/50' : 'bg-[#EAE8E5] border-gray-300'}`}>
-                    <h4 className={`${BRAND_THEME.typography.declinedHeader} font-larken font-black text-[#BC1940] uppercase tracking-widest mb-1`}>DECLINED</h4>
-                    <div className="flex flex-col gap-1"> {Object.values(p.declined.reduce((acc: Record<string, GroupedDecline>, d: TeamMember) => { const cp = d.position.match(/(RF\d+)/i)?.[0].toUpperCase() || d.position; if (!acc[d.name]) acc[d.name] = { name: d.name, positions: [cp] }; else if (!acc[d.name].positions.includes(cp)) acc[d.name].positions.push(cp); return acc; }, {})).map((g: GroupedDecline) => ( <div key={g.name} className={`${BRAND_THEME.typography.declinedText} flex items-center gap-2 leading-tight`}><span className="text-[#BC1940] line-through font-bold">{formatName(g.name)}</span><span className="text-[10px] text-[#BC1940]/70 font-black">({g.positions.join(',')})</span></div> ))} </div>
-                  </div>
-                )}
+                
+                <div className="mt-auto space-y-2">
+                  {p.declined.length > 0 && (
+                    <div className={`pt-2 border-t p-2 rounded transition-colors duration-500 ${theme === 'dark' ? 'bg-[#090C0F] border-[#BC1940]/50' : 'bg-[#EAE8E5] border-gray-300'}`}>
+                      <h4 className={`${BRAND_THEME.typography.declinedHeader} font-larken font-black text-[#BC1940] uppercase tracking-widest mb-1`}>DECLINED</h4>
+                      <div className="flex flex-col gap-1"> {Object.values(p.declined.reduce((acc: Record<string, GroupedDecline>, d: TeamMember) => { const cp = d.position.match(/(RF\d+)/i)?.[0].toUpperCase() || d.position; if (!acc[d.name]) acc[d.name] = { name: d.name, positions: [cp] }; else if (!acc[d.name].positions.includes(cp)) acc[d.name].positions.push(cp); return acc; }, {})).map((g: GroupedDecline) => ( <div key={g.name} className={`${BRAND_THEME.typography.declinedText} flex items-center gap-2 leading-tight`}><span className="text-[#BC1940] line-through font-bold">{formatName(g.name)}</span><span className="text-[10px] text-[#BC1940]/70 font-black">({g.positions.join(',')})</span></div> ))} </div>
+                    </div>
+                  )}
+
+                  {p.blockouts && p.blockouts.length > 0 && (
+                    <div className={`pt-2 border-t p-2 rounded transition-colors duration-500 ${theme === 'dark' ? 'bg-[#090C0F] border-slate-700' : 'bg-slate-100 border-gray-300'}`}>
+                      <h4 className={`${BRAND_THEME.typography.declinedHeader} font-larken font-black text-slate-500 uppercase tracking-widest mb-1.5`}>BLOCKOUTS</h4>
+                      <div className="flex flex-wrap gap-1.5">
+                        {p.blockouts.map((name) => (
+                          <div 
+                            key={name} 
+                            className={`px-1.5 py-0.5 rounded text-[13px] font-bold tracking-tight leading-none opacity-60 ${
+                              theme === 'dark' ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {formatName(name)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* NEW: Clean Status Indicator at bottom left clear of the curve */}
+      <div className="fixed bottom-3 left-4 z-[200] flex items-center gap-1.5 opacity-50">
+        <div className={`w-2 h-2 rounded-full bg-green-500 ${!isLoading ? 'animate-pulse' : ''}`} />
+        <span className="text-[10px] font-black uppercase tracking-tighter text-slate-500"></span>
+      </div>
     </div>
   );
 }
