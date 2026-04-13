@@ -7,5 +7,5 @@ export default function ProductionPage() {
     tech: true,
     orchestra: false
   };
-  return <MatrixView initialShowTeams={productionDefaults} hideControls={true} />;
+  return <MatrixView initialShowTeams={productionDefaults} hideControls={false} />;
 }
