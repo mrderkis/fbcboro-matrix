@@ -230,20 +230,20 @@ export default function MatrixView({
                 <div className="mt-auto pt-4 space-y-2">
                   {p.declined.length > 0 && (
                     <div className="bg-red-900/20 p-2 rounded border border-red-500/30">
-                      <span className="text-[10px] font-black text-red-500 block mb-1 uppercase tracking-widest">DECLINED</span>
+                      <span className="text-[13px] font-black text-red-500 block mb-1 uppercase tracking-widest">DECLINED</span>
                       {p.declined.map(d => (
-                        <div key={d.id} className="text-[14px] line-through text-red-400 font-bold leading-none mb-1">
-                          {formatName(d.name)} <span className="text-[10px] opacity-60">({d.position})</span>
+                        <div key={d.id} className="text-[18px] line-through text-red-400 font-bold leading-none mb-1">
+                          {formatName(d.name)} <span className="text-[14px] opacity-60">({d.position})</span>
                         </div>
                       ))}
                     </div>
                   )}
                   {p.blockouts && p.blockouts.length > 0 && (
                     <div className="bg-slate-800/40 p-2 rounded border border-slate-700">
-                      <span className="text-[10px] font-black text-slate-500 block mb-1 uppercase tracking-widest">BLOCKOUTS</span>
+                      <span className="text-[13px] font-black text-slate-200 block mb-1 uppercase tracking-widest">BLOCKOUTS</span>
                       <div className="flex flex-wrap gap-1">
                         {p.blockouts.map(name => (
-                          <span key={name} className="bg-slate-700 px-1.5 py-0.5 rounded text-[11px] font-bold opacity-60">
+                          <span key={name} className="bg-slate-700 px-1.5 py-0.5 rounded text-[18px] font-bold opacity-60">
                             {formatName(name)}
                           </span>
                         ))}
@@ -260,14 +260,14 @@ export default function MatrixView({
               {specialPlans.map((sp: any, i: number) => (
                 <div key={i} className="flex-1 flex flex-col p-2 rounded border-2 bg-[#10313A]/60 border-[#225262]/40">
                   <div className="flex justify-between items-baseline mb-2 border-b border-white/10 pb-1">
-                    <h4 className="text-[9px] font-black uppercase text-slate-300 tracking-widest">{i === 0 ? "Choir Rehearsal" : "Student Choir"}</h4>
-                    <span className="text-[11px] font-black text-[#35E1E5]">{sp.date}</span>
+                    <h4 className="text-[15px] font-black uppercase text-slate-200 tracking-widest">{i === 0 ? "Choir Rehearsal" : "Student Choir"}</h4>
+                    <span className="text-[18px] font-black text-[#35E1E5]">{sp.date}</span>
                   </div>
                   <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-1">
                     {!sp.exists ? (
-                      <div className="bg-[#E5B429] text-black p-2 rounded font-black text-[10px] text-center mt-4">NO PLAN</div>
+                      <div className="bg-[#E5B429] text-black p-2 rounded font-black text-[30px] text-center mt-4">NO PLAN</div>
                     ) : sp.songs.length === 0 ? (
-                      <div className="bg-[#E5B429] text-black p-2 rounded font-black text-[12px] text-center mt-4 uppercase">Blank</div>
+                      <div className="bg-[#E5B429] text-black p-2 rounded font-black text-[30px] text-center mt-4 uppercase">Blank</div>
                     ) : (
                       sp.songs.map((s: string, j: number) => (
                         <div key={j} className="text-[12px] font-bold px-2 py-1 rounded border border-blue-900/30 bg-[#225262]/50 text-white truncate animate-song-pulse">
