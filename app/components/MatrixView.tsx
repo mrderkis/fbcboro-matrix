@@ -13,10 +13,10 @@ const BRAND_THEME = {
 interface TeamMember { id: string; name: string; position: string; status: 'C' | 'U' | 'D'; notificationsSent: boolean; }
 interface TeamCategory { id: string; name: string; members: TeamMember[]; isEmpty: boolean; }
 interface PlanItem { id: string; title: string; type: string; songLeader?: string; }
-interface DashboardPlan { 
-  id: string; date: string; startTime: string | null; title: string; series: string; isComplete: boolean; 
-  items: PlanItem[]; declined: TeamMember[]; blockouts?: string[]; 
-  teams: { vocalists: TeamCategory; rhythm: TeamCategory; tech: TeamCategory; orchestra: TeamCategory; safety: TeamCategory; }; 
+interface DashboardPlan {
+  id: string; date: string; startTime: string | null; title: string; series: string; isComplete: boolean;
+  items: PlanItem[]; declined: TeamMember[]; blockouts?: string[];
+  teams: { vocalists: TeamCategory; rhythm: TeamCategory; tech: TeamCategory; orchestra: TeamCategory; safety: TeamCategory; };
 }
 
 function ServiceCountdown({ targetTime }: { targetTime: string | null }) {
@@ -37,10 +37,10 @@ function ServiceCountdown({ targetTime }: { targetTime: string | null }) {
   return <div className="font-mono font-bold text-xl tabular-nums text-[#35E1E5]">{timeLeft}</div>;
 }
 
-export default function MatrixView({ 
-  initialShowTeams, 
-  hideControls = false, 
-  initialServiceCount = 4, 
+export default function MatrixView({
+  initialShowTeams,
+  hideControls = false,
+  initialServiceCount = 4,
   showSpecials = true,
   isBroadcast = false
 }: any) {
@@ -50,7 +50,7 @@ export default function MatrixView({
   const [isLoading, setIsLoading] = useState(true);
   const [ignoredPositions, setIgnoredPositions] = useState<Record<string, boolean>>({});
   const [showTeams, setShowTeams] = useState(initialShowTeams || { vocalists: true, rhythm: true, tech: true, safety: true, orchestra: false });
-  
+
   // Restored the cog wheel setting toggle!
   const [isSettingsOpen, setIsSettingsOpen] = useState(!hideControls);
 
@@ -58,7 +58,7 @@ export default function MatrixView({
     vocalists: { left: ['RF1', 'RF2', 'RF3', 'RF4', 'RF5', 'RF6'], right: ['RF7', 'RF8', 'RF9', 'RF10', 'RF11'] },
     rhythm: { left: ['DRM', 'Bass', 'EG1', 'EG2'], right: ['AG', 'Keys', 'PNO'] },
     tech: { left: ['DIR', 'PTZ OP', 'CAM 3', 'CAM 4'], right: ['CG1', 'CG2', 'FOH', 'AFV'] },
-    safety: { left: ['S1', 'S2', 'S3'], right: ['S4', 'S5', 'S6'] } 
+    safety: { left: ['S1', 'S2', 'S3'], right: ['S4', 'S5', 'S6'] }
   };
 
   const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
@@ -76,7 +76,8 @@ export default function MatrixView({
       } catch (e) { console.error(e); } finally { setIsLoading(false); }
     };
     syncData();
-    const interval = setInterval(syncData, 60000);
+    const interval = setInterval(syncData, 300000);
+    //const interval = setInterval(syncData, 60000);
     return () => clearInterval(interval);
   }, [serviceCount, showSpecials]);
 
@@ -97,7 +98,7 @@ export default function MatrixView({
       if (isSong) {
         flushGroup();
         rows.push(
-          <div key={item.id} className={`${BRAND_THEME.typography.setlist} ${BRAND_THEME.layout.setlistSlotHeight} font-bold leading-tight px-2 py-0.5 rounded flex items-center justify-between border shadow-sm animate-song-pulse ${isPl ? 'bg-[#E5B429] text-black border-yellow-700' : 'bg-[#57AAC1] text-white border-blue-800'}`}>
+          <div key={item.id} className={`${BRAND_THEME.typography.setlist} ${BRAND_THEME.layout.setlistSlotHeight} font-bold leading-tight px-2 py-0.5 rounded flex items-center justify-between border shadow-sm ${isPl ? 'animate-song-pulse bg-[#E5B429] text-black border-yellow-700' : 'bg-[#57AAC1] text-white border-blue-800'}`}>
             <span className="truncate uppercase">{title}</span>
             {item.songLeader && (
               <div className="w-6 h-6 rounded-full border-2 border-white/40 flex items-center justify-center shrink-0 bg-black/20 ml-1">
@@ -108,7 +109,7 @@ export default function MatrixView({
         );
       } else {
         currentGroup.push(title);
-        if (idx === items.length - 1 || items[idx+1].type === 'song' || isPlaceholderSong(items[idx+1].title)) flushGroup();
+        if (idx === items.length - 1 || items[idx + 1].type === 'song' || isPlaceholderSong(items[idx + 1].title)) flushGroup();
       }
     });
     return rows;
@@ -134,7 +135,7 @@ export default function MatrixView({
               <span className={`w-3 h-3 rounded-full shrink-0 ${person.status === 'C' ? 'bg-green-500' : 'bg-yellow-400'}`} />
               <span className={`${BRAND_THEME.typography.name} font-black truncate text-white leading-none`}>{formatName(person.name)}</span>
               {!person.notificationsSent && (
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E5B429" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E5B429" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>
               )}
             </>
           ) : (
@@ -148,9 +149,9 @@ export default function MatrixView({
   const renderTeamSection = (pId: string, team: TeamCategory, title: string, tType: string) => {
     const cols = TEAM_COLUMNS[tType];
     if (!cols || !team) return null;
-    
+
     const isSingleCol = isBroadcast && (tType === 'tech' || tType === 'safety');
-    
+
     return (
       <div className="mb-2">
         <h4 className="text-[10px] font-black uppercase text-[#CECBC6] border-b border-white/10 mb-1">{title}</h4>
@@ -180,7 +181,7 @@ export default function MatrixView({
       {/* COG WHEEL TOGGLE BUTTON */}
       {!hideControls && (
         <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="fixed top-4 right-4 z-[100] p-2 rounded-full bg-black/20 hover:bg-black/40 text-white/50 hover:text-white transition-all border border-white/10">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
         </button>
       )}
 
@@ -193,10 +194,10 @@ export default function MatrixView({
           </div>
           <div className="flex items-center gap-4 text-[10px] font-black uppercase">
             {Object.keys(showTeams).map(t => (
-              <label key={t} className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={(showTeams as any)[t]} onChange={() => setShowTeams((p:any) => ({...p, [t]: !(showTeams as any)[t]}))} className="accent-white" /> {t}</label>
+              <label key={t} className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={(showTeams as any)[t]} onChange={() => setShowTeams((p: any) => ({ ...p, [t]: !(showTeams as any)[t] }))} className="accent-white" /> {t}</label>
             ))}
             <select value={serviceCount} onChange={(e) => setServiceCount(Number(e.target.value))} className="bg-black border border-white/20 p-1 rounded">
-              {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n} SERVICES</option>)}
+              {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n} SERVICES</option>)}
             </select>
           </div>
         </div>
@@ -210,7 +211,7 @@ export default function MatrixView({
                 <h3 className="font-black font-larken text-xl uppercase tracking-tighter">{p.date}</h3>
                 <ServiceCountdown targetTime={p.startTime} />
               </div>
-              
+
               <div className="p-2 overflow-y-auto flex-1 flex flex-col no-scrollbar">
                 <div className="bg-black/40 p-2 rounded border border-white/5 h-[340px] flex flex-col shrink-0 mb-3 overflow-hidden">
                   <span className="font-black text-sm block truncate text-white leading-tight">{p.title}</span>
@@ -254,25 +255,30 @@ export default function MatrixView({
               </div>
             </div>
           ))}
-
           {showSpecials && (
             <div className="flex flex-col h-full gap-2">
               {specialPlans.map((sp: any, i: number) => (
                 <div key={i} className="flex-1 flex flex-col p-2 rounded border-2 bg-[#10313A]/60 border-[#225262]/40">
                   <div className="flex justify-between items-baseline mb-2 border-b border-white/10 pb-1">
                     <h4 className="text-[15px] font-black uppercase text-slate-200 tracking-widest">{i === 0 ? "Choir Rehearsal" : "Student Choir"}</h4>
-                    <span className="text-[18px] font-black text-[#35E1E5]">{sp.date}</span>
+                    <span className="text-[18px] font-black text-[#35E1E5]">{sp?.date || 'TBD'}</span>
                   </div>
                   <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-1">
-                    {!sp.exists ? (
+                    {!sp?.exists ? (
                       <div className="bg-[#E5B429] text-black p-2 rounded font-black text-[30px] text-center mt-4">NO PLAN</div>
-                    ) : sp.songs.length === 0 ? (
+                    ) : !sp?.items?.length ? (
                       <div className="bg-[#E5B429] text-black p-2 rounded font-black text-[30px] text-center mt-4 uppercase">Blank</div>
                     ) : (
-                      sp.songs.map((s: string, j: number) => (
-                        <div key={j} className="text-[12px] font-bold px-2 py-1 rounded border border-blue-900/30 bg-[#225262]/50 text-white truncate animate-song-pulse">
-                          {s.toUpperCase()}
-                        </div>
+                      sp.items.map((item: any, j: number) => (
+                        item?.type === 'header' ? (
+                          <div key={j} className="text-[12px] font-black text-[#E5B429] uppercase mt-3 mb-1 border-b border-white/10 pb-0.5 tracking-widest">
+                            {item?.title || 'UNTITLED HEADER'}
+                          </div>
+                        ) : (
+                          <div key={j} className="text-[12px] font-bold px-2 py-1 rounded border border-blue-900/30 bg-[#225262]/50 text-white truncate animate-song-pulse">
+                            {item?.title ? item.title.toUpperCase() : 'UNTITLED'}
+                          </div>
+                        )
                       ))
                     )}
                   </div>
@@ -285,3 +291,4 @@ export default function MatrixView({
     </div>
   );
 }
+

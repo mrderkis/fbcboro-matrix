@@ -5,6 +5,7 @@ export default function ProductionPage() {
     vocalists: true,
     rhythm: true,
     tech: true,
+    safety: true,
     orchestra: false
   };
   return <MatrixView initialShowTeams={productionDefaults} hideControls={false} />;

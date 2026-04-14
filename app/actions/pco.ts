@@ -230,16 +230,45 @@ export async function fetchMatrixPlans(count: number): Promise<DashboardPlan[]> 
 
 export async function fetchSpecialPlans() {
   const specialIds = [415926, 1464487]; 
+  const headers = { 'Authorization': `Basic ${Buffer.from(`${process.env.PCO_APP_ID}:${process.env.PCO_SECRET}`).toString('base64')}` };
+
   const results = await Promise.all(specialIds.map(async (id) => {
     try {
-      const response = await fetch(`https://api.planningcenteronline.com/services/v2/service_types/${id}/plans?filter=future&per_page=1&include=items`, { headers: { 'Authorization': `Basic ${Buffer.from(`${process.env.PCO_APP_ID}:${process.env.PCO_SECRET}`).toString('base64')}` }, next: { revalidate: 300 } });
-      const data = await response.json();
-      if (!data.data || data.data.length === 0) return { id, error: 'no plan created' };
-      const plan = data.data[0];
-      const items = data.included || [];
-      const songs = items.filter((i: any) => i.attributes.item_type === 'song');
-      return { id, date: new Date(plan.attributes.sort_date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }), songs: songs.map((s: any) => s.attributes.title), exists: true };
-    } catch (e) { return { id, error: 'connection error' }; }
+      // STEP 1: Find the upcoming plan
+      const planRes = await fetch(`https://api.planningcenteronline.com/services/v2/service_types/${id}/plans?filter=future&per_page=1`, { 
+        headers, next: { revalidate: 0 } // Revalidate 0 forces Next.js to drop the "Blank" cache
+      });
+      const planData = await planRes.json();
+      
+      if (!planData.data || planData.data.length === 0) return { id, exists: false, date: 'NO PLAN', items: [] };
+      
+      const plan = planData.data[0];
+      const planId = plan.id;
+
+      // STEP 2: Hit the exact endpoint from your screenshot to get the items
+      const itemsRes = await fetch(`https://api.planningcenteronline.com/services/v2/service_types/${id}/plans/${planId}/items?per_page=100`, { 
+        headers, next: { revalidate: 0 } 
+      });
+      const itemsData = await itemsRes.json();
+      
+      // Because we hit /items directly, they are sitting right in data.data
+      const rawItems = itemsData.data || [];
+      
+      // STEP 3: Map them using the exact structure from your screenshot
+      const formattedItems = rawItems.map((i: any) => ({
+        title: i.attributes?.title || 'Untitled',
+        type: i.attributes?.item_type || 'item' // This will grab "header", "song", etc.
+      }));
+
+      return { 
+        id, 
+        date: new Date(plan.attributes.sort_date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }), 
+        items: formattedItems, 
+        exists: true 
+      };
+    } catch (e) { 
+      return { id, exists: false, date: 'ERROR', items: [] }; 
+    }
   }));
   return results;
 }
