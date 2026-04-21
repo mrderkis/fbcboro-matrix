@@ -1,16 +1,22 @@
 import MatrixView from '../components/MatrixView';
+import { getDisplaySettings } from '../actions/settings';
 
-export default function WorshipPage() {
-  const worshipDefaults = {
-    vocalists: true,
-    rhythm: true,
-    tech: false,
-    orchestra: false
-  };
+export default async function WorshipPage() {
+  const config = await getDisplaySettings();
+  
+  // Directly pull the WORSHIP object from the JSON
+  const activeSettings = config['WORSHIP'];
+
+  if (!activeSettings) {
+    return <MatrixView hideControls={true} />;
+  }
 
   return (
-    <main className="bg-gray-100">
-      <MatrixView initialShowTeams={worshipDefaults} hideControls={true} />
-    </main>
+    <MatrixView 
+      initialShowTeams={activeSettings.teams}
+      initialServiceCount={activeSettings.serviceCount}
+      showSpecials={activeSettings.showSpecials}
+      hideControls={true} 
+    />
   );
 }

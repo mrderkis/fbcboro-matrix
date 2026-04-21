@@ -44,13 +44,60 @@ export interface DashboardPlan {
   };
 }
 
+export interface SpecialPlanItem {
+  title: string;
+  type: string;
+}
+
+export interface SpecialPlan {
+  id: number;
+  exists: boolean;
+  date: string;
+  items: SpecialPlanItem[];
+}
+
 interface PCORawResponse<T, I = unknown> { data: T[]; included?: I[]; }
 interface PCORawPlan { id: string; attributes: { dates: string | null; sort_date: string; title: string | null; series_title: string | null; }; relationships: { plan_times: { data: { id: string; type: string }[] } }; }
 interface PCORawPlanTime { id: string; type: 'PlanTime'; attributes: { starts_at: string; time_type: string; }; }
-interface PCORawItem { id: string; attributes: { title: string | null; item_type: string | null; description?: string | null; }; }
+
+interface PCORawItem { 
+  id: string; 
+  attributes: { title: string | null; item_type: string | null; description?: string | null; }; 
+  relationships?: { item_assignments?: { data?: { id: string; type: string }[] } };
+}
+
 interface PCORawTeamMember { id: string; attributes: { status: 'C' | 'U' | 'D'; team_position_name: string | null; name: string | null; prepare_notification: boolean; }; relationships: { team?: { data?: { id: string } | null; } | null; person?: { data?: { id: string } | null; } | null; }; }
 interface PCOBlockout { id: string; attributes: { starts_at: string; ends_at: string; group_identifier: string | null; reason: string | null; }; }
 interface FormattedBlockout { id: string; personId: string; name: string; startsAt: string; endsAt: string; groupId: string | null; }
+
+interface PCORawPerson {
+  id: string;
+  type?: string;
+  attributes?: {
+    name?: string | null;
+    full_name?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+  };
+}
+
+interface PCOIncludedItem {
+  id: string;
+  type: string;
+  attributes?: {
+    name?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+  };
+  relationships?: {
+    assignable?: {
+      data?: {
+        id: string;
+        type: string;
+      } | null;
+    };
+  };
+}
 
 const SERVICE_TYPE_ID = '22562';
 const TARGET_TEAMS = { 
@@ -61,6 +108,36 @@ const TARGET_TEAMS = {
   safety: '4026892' 
 };
 const SETTINGS_PATH = path.join(process.cwd(), 'ignored-slots.json');
+
+// --- SMART PCO FETCH WRAPPER ---
+// Intercepts 429 Rate Limits AND local network drops (ENOTFOUND/Timeouts),
+// automatically pausing and retrying without crashing the app.
+async function pcoFetch(url: string, options: RequestInit = {}, retries = 3): Promise<Response> {
+  try {
+    const res = await fetch(url, options);
+
+    if (res.status === 429 && retries > 0) {
+      const retryAfter = res.headers.get('Retry-After');
+      const waitSeconds = retryAfter ? parseInt(retryAfter, 10) : 20;
+      console.warn(`[PCO API] Rate limit hit. Pausing execution for ${waitSeconds} seconds...`);
+      await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
+      return pcoFetch(url, options, retries - 1);
+    }
+
+    return res;
+  } catch (error: unknown) {
+    // If the network drops (ENOTFOUND, Timeout), use Exponential Backoff
+    if (retries > 0) {
+      // Retries will wait 2s, then 4s, then 6s
+      const backoffTime = (4 - retries) * 2000; 
+      console.warn(`[Network Glitch] Timeout/Drop. Retrying in ${backoffTime / 1000} seconds...`);
+      await new Promise(resolve => setTimeout(resolve, backoffTime));
+      return pcoFetch(url, options, retries - 1);
+    }
+    // If we are completely out of retries, throw it to the outer safety nets
+    throw error; 
+  }
+}
 
 export async function getIgnoredSettings(): Promise<Record<string, boolean>> {
   try { const data = await fs.readFile(SETTINGS_PATH, 'utf8'); return JSON.parse(data) as Record<string, boolean>; } 
@@ -84,7 +161,7 @@ export async function fetchMatrixPlans(count: number): Promise<DashboardPlan[]> 
   const headers: Record<string, string> = { Authorization: authHeader };
 
   const fetchCount = count + 2; 
-  const plansRes = await fetch(`https://api.planningcenteronline.com/services/v2/service_types/${SERVICE_TYPE_ID}/plans?filter=future&per_page=${fetchCount}&include=plan_times`, { headers, next: { revalidate: 0 } });
+  const plansRes = await pcoFetch(`https://api.planningcenteronline.com/services/v2/service_types/${SERVICE_TYPE_ID}/plans?filter=future&per_page=${fetchCount}&include=plan_times`, { headers, next: { revalidate: 60 } });
   
   if (!plansRes.ok) throw new Error(`Failed to fetch PCO plans. Status: ${plansRes.status}`);
 
@@ -98,46 +175,83 @@ export async function fetchMatrixPlans(count: number): Promise<DashboardPlan[]> 
     return now < expirationTime;
   }).slice(0, count);
 
-  const planDataCache: { plan: PCORawPlan, teamData: PCORawResponse<PCORawTeamMember>, itemsData: PCORawResponse<PCORawItem> }[] = [];
+  const planDataCache: { plan: PCORawPlan, teamData: PCORawResponse<PCORawTeamMember>, itemsData: PCORawResponse<PCORawItem, PCOIncludedItem> }[] = [];
   const allPersonIds = new Set<string>();
   const personMap = new Map<string, string>();
 
+  // PHASE 1: THE MASTER ROSTER FETCH (SEQUENTIAL)
+  const rosterResults: PCORawPerson[][] = [];
+  for (const teamId of Object.values(TARGET_TEAMS)) {
+    try {
+      const res = await pcoFetch(`https://api.planningcenteronline.com/services/v2/teams/${teamId}/people?per_page=100`, { headers, next: { revalidate: 60 } });
+      if (res.ok) {
+        const json = (await res.json()) as { data: PCORawPerson[] };
+        rosterResults.push(json.data || []);
+      }
+    } catch { /* Ignore individual roster failures so the rest can continue */ }
+  }
+  
+  rosterResults.flat().forEach((person: PCORawPerson) => {
+    if (person && person.id) {
+      const name = person.attributes?.name || person.attributes?.full_name || `${person.attributes?.first_name || ''} ${person.attributes?.last_name || ''}`.trim() || 'Unknown';
+      allPersonIds.add(person.id);
+      personMap.set(person.id, name);
+    }
+  });
+
+  // PHASE 2: FETCH THE SPECIFIC PLAN DETAILS (SEQUENTIAL)
   for (const plan of validPlans) {
     const planId = plan.id;
-    const [teamRes, itemsRes] = await Promise.all([
-      fetch(`https://api.planningcenteronline.com/services/v2/service_types/${SERVICE_TYPE_ID}/plans/${planId}/team_members?include=team,person&per_page=100`, { headers }),
-      fetch(`https://api.planningcenteronline.com/services/v2/service_types/${SERVICE_TYPE_ID}/plans/${planId}/items?per_page=100`, { headers })
-    ]);
+    
+    // Fetch one by one to protect local router socket limits
+    const teamRes = await pcoFetch(`https://api.planningcenteronline.com/services/v2/service_types/${SERVICE_TYPE_ID}/plans/${planId}/team_members?include=team,person&per_page=100`, { headers, next: { revalidate: 60 } });
+    const itemsRes = await pcoFetch(`https://api.planningcenteronline.com/services/v2/service_types/${SERVICE_TYPE_ID}/plans/${planId}/items?per_page=100&include=item_assignments,item_assignments.assignable`, { headers, next: { revalidate: 60 } });
 
     const teamData = (await teamRes.json()) as PCORawResponse<PCORawTeamMember>;
-    const itemsData = (await itemsRes.json()) as PCORawResponse<PCORawItem>;
+    const itemsData = (await itemsRes.json()) as PCORawResponse<PCORawItem, PCOIncludedItem>;
 
     teamData.data.forEach((member) => {
       const pid = member.relationships?.person?.data?.id;
-      if (pid) { allPersonIds.add(pid); personMap.set(pid, member.attributes.name || 'Unknown'); }
+      if (pid) { 
+        allPersonIds.add(pid); 
+        if (!personMap.has(pid) || personMap.get(pid) === 'Unknown') {
+          personMap.set(pid, member.attributes.name || 'Unknown'); 
+        }
+      }
     });
     planDataCache.push({ plan, teamData, itemsData });
   }
 
+  // PHASE 3: FETCH THE BLOCKOUTS (CHUNKED)
   const allBlockouts: FormattedBlockout[] = [];
   const uniqueIds = Array.from(allPersonIds);
-  const chunkSize = 20;
+  
+  // Lowered chunk size to 5 to prevent UND_ERR_CONNECT_TIMEOUT bottlenecks
+  const chunkSize = 5; 
 
   for (let i = 0; i < uniqueIds.length; i += chunkSize) {
     const chunk = uniqueIds.slice(i, i + chunkSize);
     const promises = chunk.map(async (personId) => {
       try {
         const url = `https://api.planningcenteronline.com/services/v2/people/${personId}/blockouts?filter=future`;
-        const res = await fetch(url, { headers, next: { revalidate: 60 } });
+        const res = await pcoFetch(url, { headers, next: { revalidate: 60 } });
         if (!res.ok) return [];
         const json = (await res.json()) as { data: PCOBlockout[] };
-        return (json.data || []).map((b) => ({ id: b.id, personId: personId, name: personMap.get(personId) || "Unknown", startsAt: b.attributes.starts_at, endsAt: b.attributes.ends_at, groupId: b.attributes.group_identifier }));
+        return (json.data || []).map((b) => ({ 
+          id: b.id, 
+          personId: personId, 
+          name: personMap.get(personId) || "Unknown", 
+          startsAt: b.attributes.starts_at, 
+          endsAt: b.attributes.ends_at, 
+          groupId: b.attributes.group_identifier 
+        }));
       } catch { return []; }
     });
     const results = await Promise.all(promises);
     results.forEach(resArray => allBlockouts.push(...resArray));
   }
 
+  // PHASE 4: ASSEMBLE THE DASHBOARD PLANS
   const dashboardPlans: DashboardPlan[] = [];
 
   for (const cached of planDataCache) {
@@ -152,13 +266,46 @@ export async function fetchMatrixPlans(count: number): Promise<DashboardPlan[]> 
 
     const startTime = serviceTimes.length > 0 ? serviceTimes[0].attributes.starts_at : null;
 
+    const itemsIncluded = itemsData.included || [];
+    const assignmentsMap = new Map<string, PCOIncludedItem>();
+    const assignablePeopleMap = new Map<string, string>();
+
+    itemsIncluded.forEach((inc: PCOIncludedItem) => {
+      if (inc.type === 'ItemAssignment') {
+        assignmentsMap.set(inc.id, inc);
+      } else if (inc.type === 'Person') {
+        const fullName = inc.attributes?.name || 
+                         `${inc.attributes?.first_name || ''} ${inc.attributes?.last_name || ''}`.trim() || 
+                         'Unknown';
+        assignablePeopleMap.set(inc.id, fullName);
+      }
+    });
+
     const planItems: PlanItem[] = itemsData.data
-      .map(item => ({ 
-        id: item.id, 
-        title: item.attributes.title || 'Untitled', 
-        type: item.attributes.item_type || 'item',
-        songLeader: item.attributes.description?.match(/Leader:\s*([^|,\n]+)/i)?.[1]?.trim() || undefined 
-      }))
+      .map((item: PCORawItem) => {
+        let songLeaderName: string | undefined = undefined;
+        
+        const assignmentRefs = item.relationships?.item_assignments?.data;
+        if (Array.isArray(assignmentRefs) && assignmentRefs.length > 0) {
+          const assignmentObj = assignmentsMap.get(assignmentRefs[0].id);
+          
+          if (assignmentObj && assignmentObj.relationships?.assignable?.data) {
+            const assignableId = assignmentObj.relationships.assignable.data.id;
+            songLeaderName = assignablePeopleMap.get(assignableId) || personMap.get(assignableId);
+          }
+        }
+
+        if (!songLeaderName) {
+           songLeaderName = item.attributes.description?.match(/Leader:\s*([^|,\n]+)/i)?.[1]?.trim() || undefined;
+        }
+
+        return { 
+          id: item.id, 
+          title: item.attributes.title || 'Untitled', 
+          type: item.attributes.item_type || 'item',
+          songLeader: songLeaderName 
+        };
+      })
       .filter(i => i.type !== 'header');
 
     const teams = {
@@ -173,7 +320,7 @@ export async function fetchMatrixPlans(count: number): Promise<DashboardPlan[]> 
     let hasUnconfirmed = false;
     let safetyCounter = 1;
 
-    teamData.data.forEach(member => {
+    teamData.data.forEach((member: PCORawTeamMember) => {
       const teamId = member.relationships?.team?.data?.id;
       const status = member.attributes.status;
       
@@ -182,7 +329,6 @@ export async function fetchMatrixPlans(count: number): Promise<DashboardPlan[]> 
         name: member.attributes.name || 'Unknown', 
         position: member.attributes.team_position_name || 'Unassigned', 
         status, 
-        // THE FIX: If PCO says 'prepare_notification' is false, it means the email WAS sent.
         notificationsSent: member.attributes.prepare_notification === false
       };
 
@@ -211,6 +357,7 @@ export async function fetchMatrixPlans(count: number): Promise<DashboardPlan[]> 
       const bEndStr = block.endsAt.split('T')[0];
       const bStartTime = new Date(`${bStartStr}T00:00:00Z`).getTime();
       const bEndTime = new Date(`${bEndStr}T00:00:00Z`).getTime();
+      
       if (planTime >= bStartTime && planTime <= bEndTime) {
         if (block.groupId && seenGroups.has(block.groupId)) return;
         uniqueBlockoutNames.add(block.name);
@@ -228,15 +375,14 @@ export async function fetchMatrixPlans(count: number): Promise<DashboardPlan[]> 
   return dashboardPlans;
 }
 
-export async function fetchSpecialPlans() {
+export async function fetchSpecialPlans(): Promise<SpecialPlan[]> {
   const specialIds = [415926, 1464487]; 
   const headers = { 'Authorization': `Basic ${Buffer.from(`${process.env.PCO_APP_ID}:${process.env.PCO_SECRET}`).toString('base64')}` };
 
   const results = await Promise.all(specialIds.map(async (id) => {
     try {
-      // STEP 1: Find the upcoming plan
-      const planRes = await fetch(`https://api.planningcenteronline.com/services/v2/service_types/${id}/plans?filter=future&per_page=1`, { 
-        headers, next: { revalidate: 0 } // Revalidate 0 forces Next.js to drop the "Blank" cache
+      const planRes = await pcoFetch(`https://api.planningcenteronline.com/services/v2/service_types/${id}/plans?filter=future&per_page=1`, { 
+        headers, next: { revalidate: 60 } 
       });
       const planData = await planRes.json();
       
@@ -245,19 +391,16 @@ export async function fetchSpecialPlans() {
       const plan = planData.data[0];
       const planId = plan.id;
 
-      // STEP 2: Hit the exact endpoint from your screenshot to get the items
-      const itemsRes = await fetch(`https://api.planningcenteronline.com/services/v2/service_types/${id}/plans/${planId}/items?per_page=100`, { 
-        headers, next: { revalidate: 0 } 
+      const itemsRes = await pcoFetch(`https://api.planningcenteronline.com/services/v2/service_types/${id}/plans/${planId}/items?per_page=100`, { 
+        headers, next: { revalidate: 60 } 
       });
       const itemsData = await itemsRes.json();
       
-      // Because we hit /items directly, they are sitting right in data.data
       const rawItems = itemsData.data || [];
       
-      // STEP 3: Map them using the exact structure from your screenshot
-      const formattedItems = rawItems.map((i: any) => ({
+      const formattedItems = rawItems.map((i: PCORawItem) => ({
         title: i.attributes?.title || 'Untitled',
-        type: i.attributes?.item_type || 'item' // This will grab "header", "song", etc.
+        type: i.attributes?.item_type || 'item' 
       }));
 
       return { 

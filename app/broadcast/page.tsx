@@ -1,21 +1,23 @@
 import MatrixView from '../components/MatrixView';
+import { getDisplaySettings } from '../actions/settings';
 
-export default function BroadcastPage() {
+export default async function BroadcastPage() {
+  const config = await getDisplaySettings();
+  
+  // Directly pull the BROADCAST object from the JSON
+  const activeSettings = config['BROADCAST'];
+
+  if (!activeSettings) {
+    return <MatrixView hideControls={true} isBroadcast={true} />;
+  }
+
   return (
-    <main className="h-screen w-screen bg-[#090C0F]">
-      <MatrixView 
-        initialServiceCount={2} 
-        showSpecials={false} 
-        hideControls={true}
-        isBroadcast={true} 
-        initialShowTeams={{ 
-          vocalists: true, 
-          rhythm: true, 
-          tech: true, 
-          safety: true, 
-          orchestra: false 
-        }}
-      />
-    </main>
+    <MatrixView 
+      initialShowTeams={activeSettings.teams}
+      initialServiceCount={activeSettings.serviceCount}
+      showSpecials={activeSettings.showSpecials}
+      hideControls={true} 
+      isBroadcast={true}
+    />
   );
 }

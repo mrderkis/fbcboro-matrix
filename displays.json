@@ -1,0 +1,23 @@
+{
+  "PRODUCTION": {
+    "name": "Production Booth",
+    "slug": "production",
+    "serviceCount": 4,
+    "showSpecials": true,
+    "teams": { "vocalists": true, "rhythm": true, "tech": true, "safety": true, "orchestra": false }
+  },
+  "BROADCAST": {
+    "name": "Broadcast Control",
+    "slug": "broadcast",
+    "serviceCount": 2,
+    "showSpecials": false,
+    "teams": { "vocalists": true, "rhythm": true, "tech": true, "safety": true, "orchestra": false }
+  },
+  "WORSHIP": {
+    "name": "Worship Pastor",
+    "slug": "worship",
+    "serviceCount": 4,
+    "showSpecials": true,
+    "teams": { "vocalists": true, "rhythm": true, "tech": false, "safety": false, "orchestra": false }
+  }
+}
