@@ -151,7 +151,7 @@ export default function MatrixView({
       if (isSong) {
         flushGroup();
         rows.push(
-          <div key={item.id} className={`${BRAND_THEME.typography.setlist} ${BRAND_THEME.layout.setlistSlotHeight} font-bold leading-tight px-2 py-0.5 rounded flex items-center justify-between border shadow-sm ${isPl ? 'animate-song-pulse bg-[#E5B429] text-black border-yellow-700' : 'bg-[#57AAC1] text-white border-blue-800'}`}>
+          <div key={item.id} className={`${BRAND_THEME.typography.setlist} ${BRAND_THEME.layout.setlistSlotHeight} font-bold leading-tight px-2 py-0.5 rounded flex items-center justify-between border shadow-sm ${isPl ? 'animate-song-pulse bg-[#E5B429] text-black border-yellow-700' : 'bg-[#57AAC1] text-black border-blue-800'}`}>
             <span className="truncate uppercase flex-1">{title}</span>
             
             {/* THE NEW SONG LEADER CIRCLE! */}

@@ -2,6 +2,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { revalidatePath } from 'next/cache'; // <-- THE MAGIC HAMMER
 
 export interface DisplaySettings {
   name: string; 
@@ -17,7 +18,7 @@ export interface DisplaySettings {
   };
 }
 
-// This tells TypeScript that our file is an object with uppercase string keys
+// This tells TypeScript that our file is an object with string keys
 export type DisplayConfig = Record<string, DisplaySettings>;
 
 const CONFIG_PATH = path.join(process.cwd(), 'displays.json');
@@ -26,7 +27,6 @@ async function ensureConfigExists(): Promise<void> {
   try {
     await fs.access(CONFIG_PATH);
   } catch {
-    // If the file doesn't exist, build the default JSON object
     const defaultData: DisplayConfig = {
       "PRODUCTION": {
         name: 'Production Booth',
@@ -66,7 +66,13 @@ export async function getDisplaySettings(): Promise<DisplayConfig> {
 
 export async function saveDisplaySettings(settings: DisplayConfig): Promise<boolean> {
   try {
+    // 1. Write the new settings to the physical file
     await fs.writeFile(CONFIG_PATH, JSON.stringify(settings, null, 2));
+    
+    // 2. FORCE NEXT.JS TO DUMP ITS CACHE
+    // This tells the server to completely refresh all pages that use this data
+    revalidatePath('/', 'layout'); 
+    
     return true;
   } catch (e) {
     console.error("Failed to save settings", e);
